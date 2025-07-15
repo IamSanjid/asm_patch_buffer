@@ -37,10 +37,15 @@ pub fn build(b: *std.Build) void {
     }
 
     const exe_tests = b.addTest(.{
-        .root_source_file = b.path("src/tests.zig"),
-        .optimize = optimize,
-        .target = target,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tests.zig"),
+            .optimize = optimize,
+            .target = target,
+        }),
     });
+    if (target.result.os.tag == .windows) {
+        exe_tests.linkSystemLibrary("advapi32");
+    }
 
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
