@@ -179,12 +179,12 @@ pub const ReadOnlyMarkers = ReadOnlyMultiArrayList(Marked);
 /// Returned after calling `commit`
 pub const CommittedResult = struct {
     buffer: TwoBuffer.OwnedBuffer,
-    refrences: std.ArrayList(ReferenceData),
+    references: std.array_list.Aligned(ReferenceData, null),
     markers: ReadOnlyMarkers,
     reserved_offset: usize,
 
     pub fn deinit(self: CommittedResult) void {
-        self.refrences.deinit();
+        self.markers.allocator.free(self.references.allocatedSlice());
         self.markers.deinit();
         self.buffer.deinit(self.markers.allocator);
     }
@@ -193,7 +193,7 @@ pub const CommittedResult = struct {
 /// Returned after calling `commitOwned`
 pub const CommittedOwnedResult = struct {
     buffer: []u8,
-    refrences: std.ArrayList(ReferenceData),
+    references: std.ArrayList(ReferenceData),
     markers: ReadOnlyMarkers,
     reserved_offset: usize,
 };
@@ -220,11 +220,11 @@ pub const Block = struct {
 pub const AsmPatchBuffer = struct {
     allocator: std.mem.Allocator,
     buffer: TwoBuffer,
-    references: std.ArrayList(ReferenceData),
+    references: std.array_list.Aligned(ReferenceData, null),
     // TODO: remove it merged with other?
-    reusable_refs: std.ArrayList(usize),
+    reusable_refs: std.array_list.Aligned(usize, null),
     markers: std.MultiArrayList(Marked),
-    blocks: std.ArrayList(Block),
+    blocks: std.array_list.Aligned(Block, null),
     original: []const u8,
     /// Current reading position from `original`.
     pos: usize = 0,
@@ -233,10 +233,10 @@ pub const AsmPatchBuffer = struct {
         return .{
             .allocator = allocator,
             .buffer = .init(allocator),
-            .references = .init(allocator),
-            .reusable_refs = .init(allocator),
+            .references = .empty,
+            .reusable_refs = .empty,
             .markers = .empty,
-            .blocks = .init(allocator),
+            .blocks = .empty,
             .original = original,
         };
     }
@@ -245,13 +245,13 @@ pub const AsmPatchBuffer = struct {
         for (self.blocks.items) |*block| {
             block.writes.deinit(self.allocator);
         }
-        self.blocks.deinit();
+        self.blocks.deinit(self.allocator);
     }
 
     pub fn deinit(self: *AsmPatchBuffer) void {
         self.buffer.deinit();
-        self.references.deinit();
-        self.reusable_refs.deinit();
+        self.references.deinit(self.allocator);
+        self.reusable_refs.deinit(self.allocator);
         self.markers.deinit(self.allocator);
         self.deinitBlocks();
     }
@@ -316,7 +316,7 @@ pub const AsmPatchBuffer = struct {
             .offset = 0,
             .size = slice.len,
         });
-        try self.blocks.append(block);
+        try self.blocks.append(self.allocator, block);
 
         self.pos += size;
     }
@@ -419,7 +419,7 @@ pub const AsmPatchBuffer = struct {
 
         const committed: CommittedResult = .{
             .buffer = buffer,
-            .refrences = self.references,
+            .references = self.references,
             .reserved_offset = reserved_offset,
             .markers = .init(self.allocator, self.markers),
         };
@@ -466,7 +466,7 @@ pub const AsmPatchBuffer = struct {
 
         const committed: CommittedOwnedResult = .{
             .buffer = buffer,
-            .refrences = self.references,
+            .references = self.references,
             .reserved_offset = reserved_offset,
             .markers = .init(self.allocator, self.markers),
         };
@@ -476,7 +476,7 @@ pub const AsmPatchBuffer = struct {
     }
 
     fn deinitAfterCommit(self: *AsmPatchBuffer) void {
-        self.reusable_refs.deinit();
+        self.reusable_refs.deinit(self.allocator);
         self.deinitBlocks();
         self.* = .init(self.allocator, self.original);
     }
@@ -602,7 +602,7 @@ pub const AsmPatchBuffer = struct {
         };
         const block_id = self.blocks.items.len;
         block.size = try self.writeAsBlock(&block, block_id, tuple);
-        try self.blocks.append(block);
+        try self.blocks.append(self.allocator, block);
     }
 
     // TODO: Add some way to isolate the written reference values with in the block?
@@ -623,7 +623,7 @@ pub const AsmPatchBuffer = struct {
 
             if (GetReferenceValueType(FieldType)) |ValueType| {
                 const value_as_slice: []const u8 = getU8Slice(ValueType, value.value, i);
-                try self.references.append(.{
+                try self.references.append(self.allocator, .{
                     .block_idx = block_id,
                     .offset = local_offset,
                     .size = value.size,
@@ -645,7 +645,7 @@ pub const AsmPatchBuffer = struct {
                 var ref = self.references.items[self.getReferenceIdx(value)];
                 ref.offset = local_offset;
                 ref.block_idx = block_id;
-                try self.references.append(ref);
+                try self.references.append(self.allocator, ref);
 
                 try block.writes.append(self.allocator, .{
                     .tag = .reference,
@@ -761,11 +761,11 @@ test "AsmPatchBuffer basic" {
     defer committed.deinit();
 
     try std.testing.expectEqual(16, committed.reserved_offset);
-    try std.testing.expectEqual(16 + 14, committed.refrences.items[0].calculateValueOffset());
-    try std.testing.expectEqual(16 + 14 + @sizeOf(usize), committed.refrences.items[1].calculateValueOffset());
-    try std.testing.expectEqualSlices(u8, &.{ 0xC, 0xD }, committed.buffer.items[committed.refrences.items[1].calculateValueOffset()..]);
+    try std.testing.expectEqual(16 + 14, committed.references.items[0].calculateValueOffset());
+    try std.testing.expectEqual(16 + 14 + @sizeOf(usize), committed.references.items[1].calculateValueOffset());
+    try std.testing.expectEqualSlices(u8, &.{ 0xC, 0xD }, committed.buffer.items[committed.references.items[1].calculateValueOffset()..]);
     try std.testing.expectEqual(orig.len + 14 + 2 + @sizeOf(usize), committed.buffer.items.len);
-    try std.testing.expectEqual(10 + 14, committed.refrences.items[0].value_offset);
+    try std.testing.expectEqual(10 + 14, committed.references.items[0].value_offset);
 }
 
 test "AsmPatchBuffer basic owned" {
@@ -794,14 +794,14 @@ test "AsmPatchBuffer basic owned" {
     const committed = try pb.commitOwned(14);
     defer {
         committed.markers.deinit();
-        committed.refrences.deinit();
+        std.testing.allocator.free(committed.references.allocatedSlice());
         std.testing.allocator.free(committed.buffer);
     }
 
     try std.testing.expectEqual(16, committed.reserved_offset);
-    try std.testing.expectEqual(16 + 14, committed.refrences.items[0].calculateValueOffset());
-    try std.testing.expectEqual(16 + 14 + @sizeOf(usize), committed.refrences.items[1].calculateValueOffset());
-    try std.testing.expectEqualSlices(u8, &.{ 0xC, 0xD }, committed.buffer[committed.refrences.items[1].calculateValueOffset()..]);
+    try std.testing.expectEqual(16 + 14, committed.references.items[0].calculateValueOffset());
+    try std.testing.expectEqual(16 + 14 + @sizeOf(usize), committed.references.items[1].calculateValueOffset());
+    try std.testing.expectEqualSlices(u8, &.{ 0xC, 0xD }, committed.buffer[committed.references.items[1].calculateValueOffset()..]);
     try std.testing.expectEqual(orig.len + 14 + 2 + @sizeOf(usize), committed.buffer.len);
-    try std.testing.expectEqual(10 + 14, committed.refrences.items[0].value_offset);
+    try std.testing.expectEqual(10 + 14, committed.references.items[0].value_offset);
 }

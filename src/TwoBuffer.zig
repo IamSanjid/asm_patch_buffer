@@ -292,22 +292,23 @@ fn growCapacity(current: usize, minimum: usize) usize {
 }
 
 test "two buffer" {
-    var tb = TwoBuffer.init(std.testing.allocator);
+    const allocator = std.testing.allocator;
+    var tb = TwoBuffer.init(allocator);
     defer tb.deinit();
 
-    var expected_a = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_a.deinit();
-    var expected_b = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_b.deinit();
+    var expected_a = std.array_list.Aligned(u8, null).empty;
+    defer expected_a.deinit(allocator);
+    var expected_b = std.array_list.Aligned(u8, null).empty;
+    defer expected_b.deinit(allocator);
 
     try tb.appendSlice(.a, &.{ 0x69, 0x68, 0x67, 0x66 });
-    try expected_a.appendSlice(&.{ 0x69, 0x68, 0x67, 0x66 });
+    try expected_a.appendSlice(allocator, &.{ 0x69, 0x68, 0x67, 0x66 });
 
     try tb.appendSlice(.b, &.{ 0x65, 0x64, 0x63 });
-    try expected_b.appendSlice(&.{ 0x65, 0x64, 0x63 });
+    try expected_b.appendSlice(allocator, &.{ 0x65, 0x64, 0x63 });
 
     try tb.insertSlice(.a, 0, &.{0x70});
-    try expected_a.insertSlice(0, &.{0x70});
+    try expected_a.insertSlice(allocator, 0, &.{0x70});
 
     {
         const a_buf = tb.getBuffer(.a);
@@ -319,7 +320,7 @@ test "two buffer" {
     }
 
     try tb.insertSlice(.a, 2, &.{ 0x71, 0x72, 0x73 });
-    try expected_a.insertSlice(2, &.{ 0x71, 0x72, 0x73 });
+    try expected_a.insertSlice(allocator, 2, &.{ 0x71, 0x72, 0x73 });
     {
         const a_buf = tb.getBuffer(.a);
         try std.testing.expectEqualSlices(u8, &.{ 0x70, 0x69, 0x71, 0x72, 0x73, 0x68, 0x67, 0x66 }, a_buf);
@@ -329,16 +330,16 @@ test "two buffer" {
     }
 
     try tb.insertSlice(.b, 2, &.{ 0x65, 0x64, 0x63 });
-    try expected_b.insertSlice(2, &.{ 0x65, 0x64, 0x63 });
+    try expected_b.insertSlice(allocator, 2, &.{ 0x65, 0x64, 0x63 });
     try std.testing.expectEqualSlices(u8, &.{ 0x65, 0x64, 0x65, 0x64, 0x63, 0x63 }, tb.getBuffer(.b));
     try std.testing.expectEqualSlices(u8, expected_b.items, tb.getBuffer(.b));
 
     // adding big chunks!
     for (0..1024) |_| {
         try tb.appendSlice(.a, &.{0xAA});
-        try expected_a.appendSlice(&.{0xAA});
+        try expected_a.appendSlice(allocator, &.{0xAA});
         try tb.appendSlice(.b, &.{0xAA});
-        try expected_b.appendSlice(&.{0xAA});
+        try expected_b.appendSlice(allocator, &.{0xAA});
     }
     try std.testing.expectEqualSlices(u8, &.{ 0x70, 0x69, 0x71, 0x72, 0x73, 0x68, 0x67, 0x66 }, tb.getBuffer(.a)[0..8]);
     try std.testing.expectEqualSlices(u8, &.{ 0x65, 0x64, 0x65, 0x64, 0x63, 0x63 }, tb.getBuffer(.b)[0..6]);
@@ -346,27 +347,27 @@ test "two buffer" {
     // adding big chunks!
     for (0..4096) |_| {
         try tb.appendSlice(.a, &.{0xAA});
-        try expected_a.appendSlice(&.{0xAA});
+        try expected_a.appendSlice(allocator, &.{0xAA});
         try tb.appendSlice(.b, &.{0xAA});
-        try expected_b.appendSlice(&.{0xAA});
+        try expected_b.appendSlice(allocator, &.{0xAA});
     }
     try std.testing.expectEqualSlices(u8, &.{ 0x70, 0x69, 0x71, 0x72, 0x73, 0x68, 0x67, 0x66 }, tb.getBuffer(.a)[0..8]);
 
-    try expected_b.insertSlice(3, &.{ 0x70, 0x69 });
+    try expected_b.insertSlice(allocator, 3, &.{ 0x70, 0x69 });
     try tb.insertSlice(.b, 3, &.{ 0x70, 0x69 });
     try std.testing.expectEqualSlices(u8, &.{ 0x65, 0x64, 0x65, 0x70, 0x69, 0x64, 0x63, 0x63 }, tb.getBuffer(.b)[0..8]);
 
     try std.testing.expectEqual(5128, tb.getBuffer(.a).len);
     try std.testing.expectEqual(expected_a.items.len, tb.getBuffer(.a).len);
 
-    try expected_a.insertSlice(tb.getBuffer(.a).len - 3, &.{ 0x1, 0x2, 0x3, 0x4 });
+    try expected_a.insertSlice(allocator, tb.getBuffer(.a).len - 3, &.{ 0x1, 0x2, 0x3, 0x4 });
     try tb.insertSlice(.a, tb.getBuffer(.a).len - 3, &.{ 0x1, 0x2, 0x3, 0x4 });
     {
         const a_buffer = tb.getBuffer(.a);
         try std.testing.expectEqualSlices(u8, &.{ 0x1, 0x2, 0x3, 0x4, 0xAA, 0xAA, 0xAA }, a_buffer[a_buffer.len - 7 ..]);
     }
 
-    try expected_b.insertSlice(1024, &.{ 0x1, 0x2, 0x3, 0x4 });
+    try expected_b.insertSlice(allocator, 1024, &.{ 0x1, 0x2, 0x3, 0x4 });
     try tb.insertSlice(.b, 1024, &.{ 0x1, 0x2, 0x3, 0x4 });
     {
         const b_buffer = tb.getBuffer(.b);
@@ -378,41 +379,42 @@ test "two buffer" {
 
     const merged = try tb.toOwnedSlice(0);
     defer std.testing.allocator.free(merged);
-    var expected_merged = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_merged.deinit();
-    try expected_merged.appendSlice(expected_a.items);
-    try expected_merged.appendSlice(expected_b.items);
+    var expected_merged = std.array_list.Aligned(u8, null).empty;
+    defer expected_merged.deinit(allocator);
+    try expected_merged.appendSlice(allocator, expected_a.items);
+    try expected_merged.appendSlice(allocator, expected_b.items);
 
     try std.testing.expectEqualSlices(u8, expected_merged.items, merged);
 }
 
 test "two buffer merges less gap" {
-    var tb = TwoBuffer.init(std.testing.allocator);
+    const allocator = std.testing.allocator;
+    var tb = TwoBuffer.init(allocator);
     defer tb.deinit();
 
-    var expected_a = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_a.deinit();
-    var expected_b = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_b.deinit();
+    var expected_a = std.array_list.Aligned(u8, null).empty;
+    defer expected_a.deinit(allocator);
+    var expected_b = std.array_list.Aligned(u8, null).empty;
+    defer expected_b.deinit(allocator);
 
     try tb.appendSlice(.a, &.{ 0x69, 0x68, 0x67, 0x66 });
-    try expected_a.appendSlice(&.{ 0x69, 0x68, 0x67, 0x66 });
+    try expected_a.appendSlice(allocator, &.{ 0x69, 0x68, 0x67, 0x66 });
 
     try tb.appendSlice(.b, &.{ 0x65, 0x64, 0x63 });
-    try expected_b.appendSlice(&.{ 0x65, 0x64, 0x63 });
+    try expected_b.appendSlice(allocator, &.{ 0x65, 0x64, 0x63 });
 
     try tb.insertSlice(.a, 0, &.{0x70});
-    try expected_a.insertSlice(0, &.{0x70});
+    try expected_a.insertSlice(allocator, 0, &.{0x70});
 
     try tb.appendSlice(.a, &[_]u8{0x60} ** 1024);
-    try expected_a.appendSlice(&[_]u8{0x60} ** 1024);
+    try expected_a.appendSlice(allocator, &[_]u8{0x60} ** 1024);
     try tb.appendSlice(.b, &[_]u8{0x60} ** 1024);
-    try expected_b.appendSlice(&[_]u8{0x60} ** 1024);
+    try expected_b.appendSlice(allocator, &[_]u8{0x60} ** 1024);
 
     try tb.appendSlice(.a, &[_]u8{0x60} ** 4096);
-    try expected_a.appendSlice(&[_]u8{0x60} ** 4096);
+    try expected_a.appendSlice(allocator, &[_]u8{0x60} ** 4096);
     try tb.appendSlice(.b, &[_]u8{0x60} ** 4096);
-    try expected_b.appendSlice(&[_]u8{0x60} ** 4096);
+    try expected_b.appendSlice(allocator, &[_]u8{0x60} ** 4096);
 
     const rand_resv_value = std.crypto.random.intRangeAtMost(u8, 0x1, 0xFF);
 
@@ -421,45 +423,46 @@ test "two buffer merges less gap" {
     @memset(merged[a_len .. a_len + 14], rand_resv_value);
 
     defer std.testing.allocator.free(merged);
-    var expected_merged = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_merged.deinit();
-    try expected_merged.appendSlice(expected_a.items);
+    var expected_merged = std.array_list.Aligned(u8, null).empty;
+    defer expected_merged.deinit(allocator);
+    try expected_merged.appendSlice(allocator, expected_a.items);
 
-    const reserve_bytes = try expected_merged.addManyAsSlice(14);
+    const reserve_bytes = try expected_merged.addManyAsSlice(allocator, 14);
     @memset(reserve_bytes, rand_resv_value);
 
-    try expected_merged.appendSlice(expected_b.items);
+    try expected_merged.appendSlice(allocator, expected_b.items);
 
     try std.testing.expectEqualSlices(u8, expected_merged.items, merged);
 }
 
 test "two buffer merges more gap" {
-    var tb = TwoBuffer.init(std.testing.allocator);
+    const allocator = std.testing.allocator;
+    var tb = TwoBuffer.init(allocator);
     defer tb.deinit();
 
-    var expected_a = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_a.deinit();
-    var expected_b = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_b.deinit();
+    var expected_a = std.array_list.Aligned(u8, null).empty;
+    defer expected_a.deinit(allocator);
+    var expected_b = std.array_list.Aligned(u8, null).empty;
+    defer expected_b.deinit(allocator);
 
     try tb.appendSlice(.a, &.{ 0x69, 0x68, 0x67, 0x66 });
-    try expected_a.appendSlice(&.{ 0x69, 0x68, 0x67, 0x66 });
+    try expected_a.appendSlice(allocator, &.{ 0x69, 0x68, 0x67, 0x66 });
 
     try tb.appendSlice(.b, &.{ 0x65, 0x64, 0x63 });
-    try expected_b.appendSlice(&.{ 0x65, 0x64, 0x63 });
+    try expected_b.appendSlice(allocator, &.{ 0x65, 0x64, 0x63 });
 
     try tb.insertSlice(.a, 0, &.{0x70});
-    try expected_a.insertSlice(0, &.{0x70});
+    try expected_a.insertSlice(allocator, 0, &.{0x70});
 
     try tb.appendSlice(.a, &[_]u8{0x60} ** 1024);
-    try expected_a.appendSlice(&[_]u8{0x60} ** 1024);
+    try expected_a.appendSlice(allocator, &[_]u8{0x60} ** 1024);
     try tb.appendSlice(.b, &[_]u8{0x60} ** 1024);
-    try expected_b.appendSlice(&[_]u8{0x60} ** 1024);
+    try expected_b.appendSlice(allocator, &[_]u8{0x60} ** 1024);
 
     try tb.appendSlice(.a, &[_]u8{0x60} ** 4096);
-    try expected_a.appendSlice(&[_]u8{0x60} ** 4096);
+    try expected_a.appendSlice(allocator, &[_]u8{0x60} ** 4096);
     try tb.appendSlice(.b, &[_]u8{0x60} ** 4096);
-    try expected_b.appendSlice(&[_]u8{0x60} ** 4096);
+    try expected_b.appendSlice(allocator, &[_]u8{0x60} ** 4096);
 
     const rand_resv_value = std.crypto.random.intRangeAtMost(u8, 0x1, 0xFF);
 
@@ -468,45 +471,46 @@ test "two buffer merges more gap" {
     @memset(merged[a_len .. a_len + 32], rand_resv_value);
 
     defer std.testing.allocator.free(merged);
-    var expected_merged = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_merged.deinit();
-    try expected_merged.appendSlice(expected_a.items);
+    var expected_merged = std.array_list.Aligned(u8, null).empty;
+    defer expected_merged.deinit(allocator);
+    try expected_merged.appendSlice(allocator, expected_a.items);
 
-    const reserve_bytes = try expected_merged.addManyAsSlice(32);
+    const reserve_bytes = try expected_merged.addManyAsSlice(allocator, 32);
     @memset(reserve_bytes, rand_resv_value);
 
-    try expected_merged.appendSlice(expected_b.items);
+    try expected_merged.appendSlice(allocator, expected_b.items);
 
     try std.testing.expectEqualSlices(u8, expected_merged.items, merged);
 }
 
 test "two buffer to_owned" {
-    var tb = TwoBuffer.init(std.testing.allocator);
+    const allocator = std.testing.allocator;
+    var tb = TwoBuffer.init(allocator);
     defer tb.deinit();
 
-    var expected_a = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_a.deinit();
-    var expected_b = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_b.deinit();
+    var expected_a = std.array_list.Aligned(u8, null).empty;
+    defer expected_a.deinit(allocator);
+    var expected_b = std.array_list.Aligned(u8, null).empty;
+    defer expected_b.deinit(allocator);
 
     try tb.appendSlice(.a, &[_]u8{0x60} ** 4096);
-    try expected_a.appendSlice(&[_]u8{0x60} ** 4096);
+    try expected_a.appendSlice(allocator, &[_]u8{0x60} ** 4096);
     try tb.appendSlice(.b, &[_]u8{0x60} ** 4096);
-    try expected_b.appendSlice(&[_]u8{0x60} ** 4096);
+    try expected_b.appendSlice(allocator, &[_]u8{0x60} ** 4096);
 
     try tb.appendSlice(.a, &.{ 0x69, 0x68, 0x67, 0x66 });
-    try expected_a.appendSlice(&.{ 0x69, 0x68, 0x67, 0x66 });
+    try expected_a.appendSlice(allocator, &.{ 0x69, 0x68, 0x67, 0x66 });
 
     try tb.appendSlice(.b, &.{ 0x65, 0x64, 0x63 });
-    try expected_b.appendSlice(&.{ 0x65, 0x64, 0x63 });
+    try expected_b.appendSlice(allocator, &.{ 0x65, 0x64, 0x63 });
 
     try tb.insertSlice(.a, 0, &.{0x70});
-    try expected_a.insertSlice(0, &.{0x70});
+    try expected_a.insertSlice(allocator, 0, &.{0x70});
 
     try tb.appendSlice(.a, &[_]u8{0x60} ** 1024);
-    try expected_a.appendSlice(&[_]u8{0x60} ** 1024);
+    try expected_a.appendSlice(allocator, &[_]u8{0x60} ** 1024);
     try tb.appendSlice(.b, &[_]u8{0x60} ** 1024);
-    try expected_b.appendSlice(&[_]u8{0x60} ** 1024);
+    try expected_b.appendSlice(allocator, &[_]u8{0x60} ** 1024);
 
     try std.testing.expectEqualSlices(u8, expected_a.items, tb.getBuffer(.a));
     try std.testing.expectEqualSlices(u8, expected_b.items, tb.getBuffer(.b));
@@ -518,14 +522,14 @@ test "two buffer to_owned" {
 
     const merged = try tb.toOwned(14);
     defer merged.deinit(std.testing.allocator);
-    var expected_merged = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_merged.deinit();
-    try expected_merged.appendSlice(expected_a.items);
-    const reserve_bytes = try expected_merged.addManyAsSlice(14);
+    var expected_merged = std.array_list.Aligned(u8, null).empty;
+    defer expected_merged.deinit(allocator);
+    try expected_merged.appendSlice(allocator, expected_a.items);
+    const reserve_bytes = try expected_merged.addManyAsSlice(allocator, 14);
 
     @memset(reserve_bytes, rand_resv_value);
 
-    try expected_merged.appendSlice(expected_b.items);
+    try expected_merged.appendSlice(allocator, expected_b.items);
 
     try std.testing.expectEqual(expected_merged.items.len, merged.items.len);
 
@@ -533,45 +537,46 @@ test "two buffer to_owned" {
 }
 
 test "two buffer replace range" {
-    var tb = TwoBuffer.init(std.testing.allocator);
+    const allocator = std.testing.allocator;
+    var tb = TwoBuffer.init(allocator);
     defer tb.deinit();
 
-    var expected_a = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_a.deinit();
-    var expected_b = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_b.deinit();
+    var expected_a = std.array_list.Aligned(u8, null).empty;
+    defer expected_a.deinit(allocator);
+    var expected_b = std.array_list.Aligned(u8, null).empty;
+    defer expected_b.deinit(allocator);
 
     try tb.appendSlice(.a, &.{ 0x69, 0x68, 0x67, 0x66 });
-    try expected_a.appendSlice(&.{ 0x69, 0x68, 0x67, 0x66 });
+    try expected_a.appendSlice(allocator, &.{ 0x69, 0x68, 0x67, 0x66 });
 
     try tb.appendSlice(.b, &.{ 0x65, 0x64, 0x63 });
-    try expected_b.appendSlice(&.{ 0x65, 0x64, 0x63 });
+    try expected_b.appendSlice(allocator, &.{ 0x65, 0x64, 0x63 });
 
     try tb.insertSlice(.a, 0, &.{ 0x70, 0x71, 0x72 });
-    try expected_a.insertSlice(0, &.{ 0x70, 0x71, 0x72 });
+    try expected_a.insertSlice(allocator, 0, &.{ 0x70, 0x71, 0x72 });
 
     try tb.replaceRange(.a, 2, 4, &.{ 0xAA, 0xAA });
-    try expected_a.replaceRange(2, 4, &.{ 0xAA, 0xAA });
+    try expected_a.replaceRange(allocator, 2, 4, &.{ 0xAA, 0xAA });
 
     try std.testing.expectEqualSlices(u8, expected_a.items, tb.getBuffer(.a));
 
     try tb.appendSlice(.b, &.{ 0x65, 0x64, 0x63 });
-    try expected_b.appendSlice(&.{ 0x65, 0x64, 0x63 });
+    try expected_b.appendSlice(allocator, &.{ 0x65, 0x64, 0x63 });
 
     try tb.replaceRange(.b, 2, 4, &.{ 0xAA, 0xAA });
-    try expected_b.replaceRange(2, 4, &.{ 0xAA, 0xAA });
+    try expected_b.replaceRange(allocator, 2, 4, &.{ 0xAA, 0xAA });
 
     try std.testing.expectEqualSlices(u8, expected_b.items, tb.getBuffer(.b));
 
     try tb.replaceRange(.a, 2, 3, &.{ 0xAA, 0xAA, 0xAA, 0xAA, 0xAA });
-    try expected_a.replaceRange(2, 3, &.{ 0xAA, 0xAA, 0xAA, 0xAA, 0xAA });
+    try expected_a.replaceRange(allocator, 2, 3, &.{ 0xAA, 0xAA, 0xAA, 0xAA, 0xAA });
 
     try std.testing.expectEqualSlices(u8, expected_a.items, tb.getBuffer(.a));
 
     try tb.appendSlice(.a, &[_]u8{0x60} ** 4096);
-    try expected_a.appendSlice(&[_]u8{0x60} ** 4096);
+    try expected_a.appendSlice(allocator, &[_]u8{0x60} ** 4096);
     try tb.appendSlice(.b, &[_]u8{0x60} ** 4096);
-    try expected_b.appendSlice(&[_]u8{0x60} ** 4096);
+    try expected_b.appendSlice(allocator, &[_]u8{0x60} ** 4096);
 
     const rand_resv_value = std.crypto.random.intRangeAtMost(u8, 0x1, 0xFF);
 
@@ -579,14 +584,14 @@ test "two buffer replace range" {
 
     const merged = try tb.toOwned(14);
     defer merged.deinit(std.testing.allocator);
-    var expected_merged = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_merged.deinit();
-    try expected_merged.appendSlice(expected_a.items);
-    const reserve_bytes = try expected_merged.addManyAsSlice(14);
+    var expected_merged = std.array_list.Aligned(u8, null).empty;
+    defer expected_merged.deinit(allocator);
+    try expected_merged.appendSlice(allocator, expected_a.items);
+    const reserve_bytes = try expected_merged.addManyAsSlice(allocator, 14);
 
     @memset(reserve_bytes, rand_resv_value);
 
-    try expected_merged.appendSlice(expected_b.items);
+    try expected_merged.appendSlice(allocator, expected_b.items);
 
     try std.testing.expectEqual(expected_merged.items.len, merged.items.len);
 
@@ -594,28 +599,29 @@ test "two buffer replace range" {
 }
 
 test "two buffer replace with empty range" {
-    var tb = TwoBuffer.init(std.testing.allocator);
+    const allocator = std.testing.allocator;
+    var tb = TwoBuffer.init(allocator);
     defer tb.deinit();
 
-    var expected_a = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_a.deinit();
-    var expected_b = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected_b.deinit();
+    var expected_a = std.array_list.Aligned(u8, null).empty;
+    defer expected_a.deinit(allocator);
+    var expected_b = std.array_list.Aligned(u8, null).empty;
+    defer expected_b.deinit(allocator);
 
     try tb.appendSlice(.a, &.{ 0x69, 0x68, 0x67, 0x66 });
-    try expected_a.appendSlice(&.{ 0x69, 0x68, 0x67, 0x66 });
+    try expected_a.appendSlice(allocator, &.{ 0x69, 0x68, 0x67, 0x66 });
 
     try tb.appendSlice(.b, &.{ 0x65, 0x64, 0x63 });
-    try expected_b.appendSlice(&.{ 0x65, 0x64, 0x63 });
+    try expected_b.appendSlice(allocator, &.{ 0x65, 0x64, 0x63 });
 
     try tb.insertSlice(.a, 0, &.{ 0x70, 0x71, 0x72 });
-    try expected_a.insertSlice(0, &.{ 0x70, 0x71, 0x72 });
+    try expected_a.insertSlice(allocator, 0, &.{ 0x70, 0x71, 0x72 });
 
     try tb.appendSlice(.a, &.{ 0x65, 0x64, 0x63, 0x62 });
-    try expected_a.appendSlice(&.{ 0x65, 0x64, 0x63, 0x62 });
+    try expected_a.appendSlice(allocator, &.{ 0x65, 0x64, 0x63, 0x62 });
 
     try tb.replaceRange(.a, 2, 4, &.{});
-    try expected_a.replaceRange(2, 4, &.{});
+    try expected_a.replaceRange(allocator, 2, 4, &.{});
 
     try std.testing.expectEqual(7, tb.len(.a));
     try std.testing.expectEqualSlices(u8, &.{ 0x70, 0x71, 0x66, 0x65, 0x64, 0x63, 0x62 }, tb.getBuffer(.a));
