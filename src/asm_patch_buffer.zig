@@ -660,7 +660,7 @@ pub const AsmPatchBuffer = struct {
                     var ref = self.references.items[idx];
                     ref.offset = local_offset;
                     ref.block_idx = block_id;
-                    try self.references.append(ref);
+                    try self.references.append(self.allocator, ref);
 
                     try block.writes.append(self.allocator, .{
                         .tag = .reference,
@@ -675,13 +675,13 @@ pub const AsmPatchBuffer = struct {
                     const value_as_slice: []const u8 = getU8Slice(RefValueType, value.reference.value, i);
 
                     const ref_id = self.references.items.len;
-                    try self.references.append(.{
+                    try self.references.append(self.allocator, .{
                         .block_idx = block_id,
                         .offset = local_offset,
                         .size = value.reference.size,
                         .value_offset = self.buffer.len(.b),
                     });
-                    try self.reusable_refs.append(ref_id);
+                    try self.reusable_refs.append(self.allocator, ref_id);
 
                     try block.writes.append(self.allocator, .{
                         .tag = .reference,
@@ -700,7 +700,7 @@ pub const AsmPatchBuffer = struct {
                 var ref = self.references.items[idx];
                 ref.offset = local_offset;
                 ref.block_idx = block_id;
-                try self.references.append(ref);
+                try self.references.append(self.allocator, ref);
 
                 try block.writes.append(self.allocator, .{
                     .tag = .reference,
